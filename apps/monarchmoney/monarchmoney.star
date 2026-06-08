@@ -79,14 +79,15 @@ def get_token(email, password):
             "supports_mfa": True,
             "trusted_device": False,
         },
-        ttl_seconds = 3600,
     )
+    if rep.status_code == 403:
+        return None, "MFA on - set API Token field"
     if rep.status_code != 200:
         return None, "Login failed (%d)" % rep.status_code
     body = rep.json()
     token = body.get("token")
     if not token:
-        return None, "MFA required - use api_token"
+        return None, "No token in response"
     return token, None
 
 def main(config):
