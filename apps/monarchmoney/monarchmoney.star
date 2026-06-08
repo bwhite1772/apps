@@ -24,6 +24,7 @@ def get_schema():
                 desc = "Your Monarch Money password. Not needed if API Token is set below.",
                 icon = "lock",
                 default = "",
+                secret = True,
             ),
             schema.Text(
                 id = "api_token",
@@ -31,6 +32,7 @@ def get_schema():
                 desc = "Use instead of email/password, or if you have MFA enabled. Get it via: pip install monarchmoney && python -c \"import asyncio; from monarchmoney import MonarchMoney; mm = MonarchMoney(); asyncio.run(mm.login()); print(mm._token)\"",
                 icon = "key",
                 default = "",
+                secret = True,
             ),
             schema.Text(
                 id = "months",
@@ -68,6 +70,7 @@ def get_token(email, password):
         LOGIN_URL,
         headers = {
             "Accept": "application/json",
+            "Client-Platform": "web",
             "Content-Type": "application/json",
         },
         json_body = {
