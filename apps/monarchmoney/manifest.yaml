@@ -1,0 +1,13 @@
+---
+id: monarchmoney
+name: Monarch Money
+summary: Net worth tracker
+desc: Displays your current net worth and 30-day change with a historical chart pulled from Monarch Money.
+author: bwhite1772
+fileName: monarchmoney.star
+packageName: monarchmoney
+recommendedInterval: 60
+category: finance
+tags:
+  - finance
+  - money
