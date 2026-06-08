@@ -2,8 +2,8 @@ load("render.star", "render")
 load("http.star", "http")
 load("schema.star", "schema")
 
-GRAPHQL_URL = "https://api.monarchmoney.com/graphql"
-LOGIN_URL = "https://api.monarchmoney.com/auth/login/"
+GRAPHQL_URL = "https://api.monarch.com/graphql"
+LOGIN_URL = "https://api.monarch.com/auth/login/"
 
 NET_WORTH_QUERY = "query GetAggregateSnapshots($filters: AggregateSnapshotFilters) { aggregateSnapshots(filters: $filters) { date balance } }"
 
@@ -193,7 +193,10 @@ def error_screen(msg):
         child = render.Column(
             children = [
                 render.Text(content = "error", color = "#FF4444", font = "tb-8"),
-                render.Text(content = msg, color = "#888888", font = "tb-8"),
+                render.Marquee(
+                    width = 64,
+                    child = render.Text(content = msg, color = "#888888", font = "tb-8"),
+                ),
             ],
         ),
     )
