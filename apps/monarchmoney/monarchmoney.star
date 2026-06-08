@@ -72,6 +72,10 @@ def get_token(email, password):
             "Accept": "application/json",
             "Client-Platform": "web",
             "Content-Type": "application/json",
+            "Origin": "https://app.monarch.com",
+            "Referer": "https://app.monarch.com/",
+            "monarch-client": "web",
+            "monarch-client-version": "2025.05",
         },
         json_body = {
             "username": email,
