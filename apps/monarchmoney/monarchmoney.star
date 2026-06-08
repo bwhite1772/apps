@@ -3,9 +3,10 @@ load("http.star", "http")
 load("schema.star", "schema")
 
 GRAPHQL_URL = "https://api.monarch.com/graphql"
-LOGIN_URL = "https://api.monarch.com/auth/login/"
 
 NET_WORTH_QUERY = "query GetAggregateSnapshots($filters: AggregateSnapshotFilters) { aggregateSnapshots(filters: $filters) { date balance } }"
+
+LOGIN_MUTATION = "mutation LoginMutation($email: String!, $password: String!, $rememberMe: Boolean) { login(email: $email, password: $password, rememberMe: $rememberMe) { token errors { field messages } } }"
 
 def get_schema():
     return schema.Schema(
@@ -67,29 +68,32 @@ def fmt_pct(pct):
 
 def get_token(email, password):
     rep = http.post(
-        LOGIN_URL,
+        GRAPHQL_URL,
         headers = {
             "Accept": "application/json",
-            "Client-Platform": "web",
             "Content-Type": "application/json",
-            "Origin": "https://app.monarch.com",
-            "Referer": "https://app.monarch.com/",
-            "monarch-client": "web",
-            "monarch-client-version": "2025.05",
         },
         json_body = {
-            "username": email,
-            "password": password,
-            "supports_mfa": True,
-            "trusted_device": False,
+            "query": LOGIN_MUTATION,
+            "variables": {
+                "email": email,
+                "password": password,
+                "rememberMe": True,
+            },
         },
     )
-    if rep.status_code == 403:
-        return None, "MFA on - set API Token field"
     if rep.status_code != 200:
         return None, "Login failed (%d)" % rep.status_code
     body = rep.json()
-    token = body.get("token")
+    login_data = (body.get("data") or {}).get("login") or {}
+    errors = login_data.get("errors") or []
+    if errors:
+        msgs = []
+        for e in errors:
+            for m in (e.get("messages") or []):
+                msgs.append(m)
+        return None, msgs[0] if msgs else "Login error"
+    token = login_data.get("token")
     if not token:
         return None, "No token in response"
     return token, None
