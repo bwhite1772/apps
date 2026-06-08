@@ -79,7 +79,6 @@ def get_token(email, password):
             "supports_mfa": True,
             "trusted_device": False,
         },
-        ttl_seconds = 3600,
     )
     if rep.status_code == 403:
         return None, "MFA on - set API Token field"
