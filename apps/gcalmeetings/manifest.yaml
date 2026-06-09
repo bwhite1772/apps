@@ -1,0 +1,14 @@
+---
+id: gcal-meetings
+name: GCal Meetings
+summary: Today's remaining meetings
+desc: Shows upcoming and in-progress meetings from Google Calendar for the rest of today. 4 per page, ongoing meetings highlighted in yellow.
+author: bwhite1772
+fileName: gcal_meetings.star
+packageName: gcalmeetings
+recommendedInterval: 5
+category: productivity
+tags:
+  - calendar
+  - meetings
+  - google

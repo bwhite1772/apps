@@ -1,0 +1,14 @@
+---
+id: faa-status
+name: FAA Status
+summary: FAA airport status board
+desc: Compact 4-row display of airport closures (red), ground stops (orange), and delays (yellow), color-coded by severity. GA aircraft closures are filtered out.
+author: bwhite1772
+fileName: faa_status.star
+packageName: faastatus
+recommendedInterval: 5
+category: transit
+tags:
+  - air-traffic
+  - utility
+  - real-time
