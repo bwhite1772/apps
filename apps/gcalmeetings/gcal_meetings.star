@@ -1,21 +1,16 @@
 """
 Applet: GCal Meetings
 Summary: Today's remaining meetings
-Description: Shows upcoming and ongoing meetings from Google Calendar for the rest of today.
+Description: Shows upcoming and ongoing meetings from Google Calendar for the rest of today using a private ICS URL.
 Author: bwhite1772
 """
 
 load("animation.star", "animation")
-load("cache.star", "cache")
 load("encoding/json.star", "json")
 load("http.star", "http")
 load("render.star", "render")
 load("schema.star", "schema")
 load("time.star", "time")
-
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-RFC3339 = "2006-01-02T15:04:05Z07:00"
 
 COLOR_TIME = "#4FC3F7"
 COLOR_TIME_NOW = "#FFDD00"
@@ -30,24 +25,10 @@ def get_schema():
         version = "1",
         fields = [
             schema.Text(
-                id = "client_id",
-                name = "Google Client ID",
-                desc = "OAuth2 Client ID from Google Cloud Console (Web app or Desktop type).",
-                icon = "key",
-                default = "",
-            ),
-            schema.Text(
-                id = "client_secret",
-                name = "Google Client Secret",
-                desc = "OAuth2 Client Secret from Google Cloud Console.",
-                icon = "lock",
-                default = "",
-            ),
-            schema.Text(
-                id = "refresh_token",
-                name = "Refresh Token",
-                desc = "One-time setup: get from https://developers.google.com/oauthplayground using scope https://www.googleapis.com/auth/calendar.readonly",
-                icon = "arrowsRotate",
+                id = "ics_url",
+                name = "Google Calendar ICS URL",
+                desc = "Google Calendar → three dots next to calendar → Settings and sharing → Secret address in iCal format",
+                icon = "calendar",
                 default = "",
             ),
             schema.Location(
@@ -60,28 +41,21 @@ def get_schema():
     )
 
 def main(config):
-    client_id = config.get("client_id", "")
-    client_secret = config.get("client_secret", "")
-    refresh_token = config.get("refresh_token", "")
-
-    if not client_id or not client_secret or not refresh_token:
-        return render_message("Configure Google Calendar in app settings", "#FF8800")
-
-    # Cache access token (valid 1 hour); key on last 12 chars of refresh token
-    cache_key = "gcal_tok_" + refresh_token[-12:]
-    access_token = cache.get(cache_key)
-    if not access_token:
-        access_token = refresh_access_token(client_id, client_secret, refresh_token)
-        if not access_token:
-            return render_message("Auth failed — check credentials", "#FF3333")
-        cache.set(cache_key, access_token, ttl_seconds = 3000)
+    ics_url = config.get("ics_url", "")
+    if not ics_url:
+        return render_message("Add your Google Calendar ICS URL in settings", "#FF8800")
 
     location = config.get("location")
     loc = json.decode(location) if location else {}
     timezone = loc.get("timezone", "America/New_York")
-    now = time.now().in_location(timezone)
+    now = time.now()
+    now_local = now.in_location(timezone)
 
-    events = fetch_events(access_token, timezone, now)
+    resp = http.get(ics_url, ttl_seconds = 300)
+    if resp.status_code != 200:
+        return render_message("Could not fetch calendar", "#FF3333")
+
+    events = parse_ical(resp.body(), timezone, now.unix, now_local)
     if not events:
         return render_message("No meetings today", COLOR_DIM)
 
@@ -142,79 +116,121 @@ def render_message(msg, color):
         ),
     )
 
-def refresh_access_token(client_id, client_secret, refresh_token):
-    resp = http.post(
-        TOKEN_URL,
-        headers = {"Content-Type": "application/x-www-form-urlencoded"},
-        body = "grant_type=refresh_token&refresh_token=%s&client_id=%s&client_secret=%s" % (
-            refresh_token,
-            client_id,
-            client_secret,
-        ),
-    )
-    if resp.status_code != 200:
+# ── iCal parser ──────────────────────────────────────────────────────────────
+
+def parse_ical(body, timezone, now_unix, now_local):
+    # Unfold RFC 5545 line continuations (CRLF + space or tab)
+    body = body.replace("\r\n ", "").replace("\r\n\t", "")
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
+
+    today_start_unix = time.time(
+        year = now_local.year, month = now_local.month, day = now_local.day,
+        hour = 0, minute = 0, second = 0, location = timezone,
+    ).unix
+    today_end_unix = time.time(
+        year = now_local.year, month = now_local.month, day = now_local.day,
+        hour = 23, minute = 59, second = 59, location = timezone,
+    ).unix
+
+    events = []
+    in_event = False
+    props = {}
+
+    for line in body.split("\n"):
+        line = line.rstrip("\r")
+        if line == "BEGIN:VEVENT":
+            in_event = True
+            props = {}
+        elif line == "END:VEVENT":
+            in_event = False
+            event = process_event(props, timezone, now_unix, today_start_unix, today_end_unix)
+            if event:
+                events.append(event)
+        elif in_event and ":" in line:
+            colon = line.find(":")
+            semi = line.find(";")
+            if 0 < semi < colon:
+                name = line[:semi]
+                params = line[semi + 1:colon]
+                value = line[colon + 1:]
+            else:
+                name = line[:colon]
+                params = ""
+                value = line[colon + 1:]
+            props[name] = (value, params)
+
+    def sort_key(e):
+        return e["start_unix"]
+
+    return sorted(events, key = sort_key)
+
+def process_event(props, timezone, now_unix, today_start_unix, today_end_unix):
+    status = props.get("STATUS", ("", ""))[0].upper()
+    if status == "CANCELLED":
         return None
-    return json.decode(resp.body()).get("access_token")
 
-def fetch_events(access_token, timezone, now):
-    now_utc = time.now()
-    end_of_day = time.time(
-        year = now.year,
-        month = now.month,
-        day = now.day,
-        hour = 23,
-        minute = 59,
-        second = 59,
-        location = timezone,
+    dtstart = props.get("DTSTART")
+    dtend = props.get("DTEND")
+    if not dtstart or not dtend:
+        return None
+
+    start_t = parse_dt(dtstart[0], dtstart[1], timezone)
+    end_t = parse_dt(dtend[0], dtend[1], timezone)
+    if not start_t or not end_t:
+        return None  # all-day or unparseable
+
+    # Keep events that end after now and start before end of today
+    if end_t.unix <= now_unix:
+        return None
+    if start_t.unix > today_end_unix:
+        return None
+
+    summary = unescape(props.get("SUMMARY", ("(No title)", ""))[0])
+    start_local = start_t.in_location(timezone)
+
+    return {
+        "title": summary,
+        "time_str": fmt_time(start_local),
+        "start_unix": start_t.unix,
+        "ongoing": start_t.unix <= now_unix,
+    }
+
+def parse_dt(value, params, fallback_tz):
+    # All-day events have no time component
+    if "T" not in value:
+        return None
+
+    if value.endswith("Z"):
+        tz = "UTC"
+        value = value[:-1]
+    elif "TZID=" in params:
+        idx = params.find("TZID=")
+        tz = params[idx + 5:]
+        semi = tz.find(";")
+        if semi >= 0:
+            tz = tz[:semi]
+    else:
+        tz = fallback_tz
+
+    if len(value) < 13:
+        return None
+
+    year = int(value[0:4])
+    month = int(value[4:6])
+    day = int(value[6:8])
+    hour = int(value[9:11])
+    minute = int(value[11:13])
+    second = int(value[13:15]) if len(value) >= 15 else 0
+
+    return time.time(
+        year = year, month = month, day = day,
+        hour = hour, minute = minute, second = second,
+        location = tz,
     )
 
-    # timeMin (lower bound on end time) = now → returns ongoing + upcoming events
-    # timeMax (upper bound on start time) = end of local day → only today
-    resp = http.get(
-        EVENTS_URL,
-        headers = {"Authorization": "Bearer " + access_token},
-        params = {
-            "timeMin": now_utc.format(RFC3339),
-            "timeMax": end_of_day.format(RFC3339),
-            "singleEvents": "true",
-            "orderBy": "startTime",
-            "maxResults": "20",
-        },
-        ttl_seconds = 60,
-    )
-    if resp.status_code != 200:
-        return []
+def unescape(s):
+    return s.replace("\\,", ",").replace("\\;", ";").replace("\\n", " ").replace("\\N", " ")
 
-    items = json.decode(resp.body()).get("items", [])
-    now_unix = now_utc.unix
-    result = []
-
-    for item in items:
-        if item.get("status") == "cancelled":
-            continue
-
-        start_raw = item.get("start", {})
-        end_raw = item.get("end", {})
-
-        # Skip all-day events (they have "date", not "dateTime")
-        if "dateTime" not in start_raw:
-            continue
-
-        start_t = time.parse_time(start_raw["dateTime"], format = RFC3339)
-        end_t = time.parse_time(end_raw["dateTime"], format = RFC3339)
-
-        ongoing = start_t.unix <= now_unix and now_unix < end_t.unix
-        start_local = start_t.in_location(timezone)
-
-        result.append({
-            "title": item.get("summary", "(No title)"),
-            "time_str": fmt_time(start_local),
-            "ongoing": ongoing,
-        })
-
-    return result
-
-# Formats a local time as "9a", "9:30a", "12p", "1:30p"
 def fmt_time(t):
     h = t.hour
     m = t.minute
