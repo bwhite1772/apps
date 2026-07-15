@@ -2,7 +2,7 @@
 id: overhead-flights
 name: Overhead Flights
 summary: Overhead flight tracker
-desc: Shows the nearest aircraft overhead with airline, flight number, origin, destination, aircraft type, altitude, and speed using the Flightradar24 API.
+desc: Shows the nearest aircraft overhead with airline, flight number, origin, destination, aircraft type, altitude, and speed, plus fun daily stats when nothing's overhead. Backed by a self-hosted flight collector.
 author: bwhite1772
 fileName: overhead_flights.star
 packageName: overhead_flights
