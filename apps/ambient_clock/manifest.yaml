@@ -1,0 +1,15 @@
+---
+id: ambient-clock
+name: Ambient Clock
+summary: Clock & weather station
+desc: Displays the time alongside live temperature and humidity from your Ambient Weather personal weather station, with a small calendar icon showing today's date.
+author: bwhite1772
+fileName: ambient_clock.star
+packageName: ambient_clock
+recommendedInterval: 1
+category: clocks
+tags:
+  - weather
+  - ambient
+  - clock
+  - utility
