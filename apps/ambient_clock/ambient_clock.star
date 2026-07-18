@@ -128,7 +128,7 @@ def main(config):
     now = time.now().in_location(timezone)
 
     night_mode_start_str = config.get("nightModeStart")
-    if night_mode_start_str == None:
+    if not night_mode_start_str:
         night_mode_start_hr = 23
         night_mode_start_min = 0
     else:
@@ -138,7 +138,7 @@ def main(config):
         night_mode_start_min = int(night_mode_start_str[2:4])
 
     night_mode_end_str = config.get("nightModeEnd")
-    if night_mode_end_str == None:
+    if not night_mode_end_str:
         night_mode_end_hr = 7
         night_mode_end_min = 0
     else:
