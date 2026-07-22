@@ -53,6 +53,20 @@ LOCAL_LOGOS = {
     "XP": _XP_B64,
 }
 
+# FR24 often omits the IATA "flight" field (e.g. "F91234") for low-cost
+# carriers and reports only the ICAO "callsign" (e.g. "FFT1234"), so the
+# airline code parsed from it comes back as a 3-letter ICAO code instead
+# of the 2-letter IATA code our logos/remote lookup are keyed by.
+ICAO_TO_IATA = {
+    "AAL": "AA",
+    "ASA": "AS",
+    "JBU": "B6",
+    "DAL": "DL",
+    "FFT": "F9",
+    "UAL": "UA",
+    "SWA": "WN",
+}
+
 FR24_BASE = "https://fr24api.flightradar24.com"
 LOGO_BASE = "https://pics.avs.io/32/32"
 
@@ -107,13 +121,25 @@ def fmt_alt(alt_ft):
         return "%d,000ft" % k
     return "%dft" % alt_ft
 
-def iata_from_flight(flight_num):
+def icao_from_callsign(callsign):
     code = ""
-    for c in flight_num.elems():
+    for c in callsign.elems():
         if c >= "0" and c <= "9":
             break
         code = code + c
     return code
+
+def resolve_iata(flight_field, callsign_field):
+    # IATA flight designators are always a 2-character airline code (which
+    # may include a digit, e.g. "F9", "B6") followed by the flight number,
+    # so the airline code is just the first 2 characters - unlike ICAO
+    # callsigns (3 letters + digits), which need the ICAO_TO_IATA map.
+    if flight_field and len(flight_field) >= 2:
+        return flight_field[0:2]
+    if callsign_field:
+        icao = icao_from_callsign(callsign_field)
+        return ICAO_TO_IATA.get(icao, icao)
+    return ""
 
 def fetch_logo(iata_code):
     if not iata_code:
@@ -193,14 +219,16 @@ def main(config):
         print("fr24: %d flights returned but all had null position" % len(flights))
         return []
 
-    flight_num = best.get("flight") or best.get("callsign") or "???"
+    flight_field = best.get("flight") or ""
+    callsign_field = best.get("callsign") or ""
+    flight_num = flight_field or callsign_field or "???"
     aircraft_type = best.get("type") or "???"
     orig = best.get("orig_iata") or "???"
     dest = best.get("dest_iata") or "???"
     alt_ft = int(best.get("alt") or 0)
     gspeed = int(best.get("gspeed") or 0)
 
-    iata = iata_from_flight(flight_num)
+    iata = resolve_iata(flight_field, callsign_field)
     logo_bytes = fetch_logo(iata)
 
     route = "%s>%s" % (orig, dest)
