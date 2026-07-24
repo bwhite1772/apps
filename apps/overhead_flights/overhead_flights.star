@@ -68,6 +68,8 @@ ICAO_TO_IATA = {
 }
 
 FR24_BASE = "https://fr24api.flightradar24.com"
+MAX_FLIGHTS = 5
+FRAME_DELAY_MS = 4000
 LOGO_BASE = "https://pics.avs.io/32/32"
 
 def get_schema():
@@ -191,42 +193,36 @@ def main(config):
     if not flights:
         return []
 
-    best = None
-    best_dist = None
-    best_has_route = False
-
+    positioned = []
     for f in flights:
         flat = f.get("lat")
         flon = f.get("lon")
         if flat == None or flon == None:
             continue
-        has_route = (f.get("orig_iata") or "") != "" and (f.get("dest_iata") or "") != ""
-        d = dist_sq(lat, lon, flat, flon)
-        if best == None:
-            best = f
-            best_dist = d
-            best_has_route = has_route
-        elif has_route and not best_has_route:
-            best = f
-            best_dist = d
-            best_has_route = has_route
-        elif has_route == best_has_route and d < best_dist:
-            best = f
-            best_dist = d
-            best_has_route = has_route
+        positioned.append((dist_sq(lat, lon, flat, flon), f))
 
-    if not best:
+    if not positioned:
         print("fr24: %d flights returned but all had null position" % len(flights))
         return []
 
-    flight_field = best.get("flight") or ""
-    callsign_field = best.get("callsign") or ""
+    positioned = sorted(positioned, key = lambda p: p[0])
+
+    frames = [flight_widget(f) for _, f in positioned[:MAX_FLIGHTS]]
+
+    return render.Root(
+        delay = FRAME_DELAY_MS,
+        child = render.Animation(children = frames),
+    )
+
+def flight_widget(f):
+    flight_field = f.get("flight") or ""
+    callsign_field = f.get("callsign") or ""
     flight_num = flight_field or callsign_field or "???"
-    aircraft_type = best.get("type") or "???"
-    orig = best.get("orig_iata") or "???"
-    dest = best.get("dest_iata") or "???"
-    alt_ft = int(best.get("alt") or 0)
-    gspeed = int(best.get("gspeed") or 0)
+    aircraft_type = f.get("type") or "???"
+    orig = f.get("orig_iata") or "???"
+    dest = f.get("dest_iata") or "???"
+    alt_ft = int(f.get("alt") or 0)
+    gspeed = int(f.get("gspeed") or 0)
 
     iata = resolve_iata(flight_field, callsign_field)
     logo_bytes = fetch_logo(iata)
@@ -240,39 +236,37 @@ def main(config):
     else:
         logo_widget = render.Box(width = 16, height = 16)
 
-    return render.Root(
-        child = render.Column(
-            children = [
-                render.Row(
-                    children = [
-                        render.Box(width = 6, height = 16),
-                        logo_widget,
-                        render.Box(width = 6, height = 16),
-                        render.Column(
-                            children = [
-                                render.Marquee(
-                                    width = 36,
-                                    child = render.Text(content = flight_num, color = "#FFFFFF", font = "tb-8"),
-                                ),
-                                render.Marquee(
-                                    width = 36,
-                                    child = render.Text(content = route, color = "#00CCFF", font = "tb-8"),
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                render.Row(
-                    expanded = True,
-                    main_align = "space_between",
-                    children = [
-                        render.Text(content = aircraft_type, color = "#6699FF", font = "tb-8"),
-                        render.Text(content = speed_label, color = "#FF8844", font = "tb-8"),
-                    ],
-                ),
-                render.Text(content = alt_label, color = "#00FF88", font = "tb-8"),
-            ],
-        ),
+    return render.Column(
+        children = [
+            render.Row(
+                children = [
+                    render.Box(width = 6, height = 16),
+                    logo_widget,
+                    render.Box(width = 6, height = 16),
+                    render.Column(
+                        children = [
+                            render.Marquee(
+                                width = 36,
+                                child = render.Text(content = flight_num, color = "#FFFFFF", font = "tb-8"),
+                            ),
+                            render.Marquee(
+                                width = 36,
+                                child = render.Text(content = route, color = "#00CCFF", font = "tb-8"),
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            render.Row(
+                expanded = True,
+                main_align = "space_between",
+                children = [
+                    render.Text(content = aircraft_type, color = "#6699FF", font = "tb-8"),
+                    render.Text(content = speed_label, color = "#FF8844", font = "tb-8"),
+                ],
+            ),
+            render.Text(content = alt_label, color = "#00FF88", font = "tb-8"),
+        ],
     )
 
 def no_flights_screen():
